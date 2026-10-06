@@ -11,7 +11,11 @@ public class PacManClient {
 
     public boolean connect(String hostIP) {
         try {
-            socket = new Socket(hostIP, 5000);
+            socket = new Socket();
+            socket.connect(
+                    new java.net.InetSocketAddress(hostIP, 5000),
+                    5000
+            );
 
             input = new DataInputStream(socket.getInputStream());
             output = new DataOutputStream(socket.getOutputStream());
@@ -22,7 +26,7 @@ public class PacManClient {
 
             System.out.println("Server: " + message);
 
-            return true;
+            return message.equals("CONNECTED");
 
         } catch (IOException e) {
             System.out.println("Connection failed: " + e.getMessage());
@@ -31,22 +35,42 @@ public class PacManClient {
     }
 
     public void send(String message) {
+        if (output == null) {
+            return;
+        }
+
         try {
             output.writeUTF(message);
             output.flush();
+
         } catch (IOException e) {
-            System.out.println("Failed to send message.");
+            System.out.println("Failed to send message: " + e.getMessage());
         }
     }
 
     public void disconnect() {
         try {
-            if (socket != null) {
+            if (input != null) {
+                input.close();
+            }
+
+            if (output != null) {
+                output.close();
+            }
+
+            if (socket != null && !socket.isClosed()) {
                 socket.close();
             }
+
         } catch (IOException e) {
-            System.out.println("Error closing connection.");
+            System.out.println("Error closing connection: " + e.getMessage());
         }
+    }
+
+    public boolean isConnected() {
+        return socket != null
+                && socket.isConnected()
+                && !socket.isClosed();
     }
 
     public static void main(String[] args) {

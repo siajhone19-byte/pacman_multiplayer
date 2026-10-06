@@ -12,7 +12,9 @@ public class PacManServer {
         try {
             serverSocket = new ServerSocket(5000);
 
-            System.out.println("PAC-MAN SERVER STARTED");
+            System.out.println("=================================");
+            System.out.println("       PAC-MAN SERVER STARTED");
+            System.out.println("=================================");
             System.out.println("Port: 5000");
             System.out.println("Waiting for Player 2...");
 
@@ -26,31 +28,49 @@ public class PacManServer {
             output.writeUTF("CONNECTED");
             output.flush();
 
-            while (true) {
-                String message = input.readUTF();
-                System.out.println("Player 2: " + message);
+            while (!clientSocket.isClosed()) {
+                try {
+                    String message = input.readUTF();
 
-                output.writeUTF(message);
-                output.flush();
+                    System.out.println("Player 2: " + message);
+
+                    output.writeUTF(message);
+                    output.flush();
+
+                } catch (EOFException e) {
+                    System.out.println("Player 2 disconnected.");
+                    break;
+                }
             }
 
         } catch (IOException e) {
             System.out.println("Server error: " + e.getMessage());
+
+        } finally {
+            stopServer();
         }
     }
 
     public void stopServer() {
         try {
-            if (clientSocket != null) {
+            if (input != null) {
+                input.close();
+            }
+
+            if (output != null) {
+                output.close();
+            }
+
+            if (clientSocket != null && !clientSocket.isClosed()) {
                 clientSocket.close();
             }
 
-            if (serverSocket != null) {
+            if (serverSocket != null && !serverSocket.isClosed()) {
                 serverSocket.close();
             }
 
         } catch (IOException e) {
-            System.out.println("Error closing server.");
+            System.out.println("Error closing server: " + e.getMessage());
         }
     }
 }
