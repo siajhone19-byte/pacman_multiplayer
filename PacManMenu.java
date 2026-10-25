@@ -1,11 +1,16 @@
-import javax.swing.*;
 import java.awt.*;
 import java.net.InetAddress;
+import javax.swing.*;
 
 public class PacManMenu extends JFrame {
 
         private PacManServer server;
         private PacManClient client;
+        private JButton pauseButton;
+        private JButton resumeButton;
+        private JButton restartButton;
+        private JButton exitButton;
+        private JPanel pauseMenuPanel;
 
         public PacManMenu() {
                 setTitle("PAC-MAN");
@@ -323,4 +328,7 @@ public class PacManMenu extends JFrame {
 
                                 });
         }
+
+
+        
 }
