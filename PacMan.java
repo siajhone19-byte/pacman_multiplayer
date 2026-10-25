@@ -1,6 +1,7 @@
 import java.awt.*;
 import java.awt.event.*;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Random;
 import javax.swing.*;
 import java.awt.Color;
@@ -117,7 +118,7 @@ public class PacMan extends JPanel implements ActionListener, KeyListener {
 
     private HashSet<Block> walls;
     private HashSet<Block> foods;
-    private HashSet<Block> ghosts;
+    private LinkedHashSet<Block> ghosts;
 
     private Block player1;
     private Block player2;
@@ -140,10 +141,19 @@ public class PacMan extends JPanel implements ActionListener, KeyListener {
     private boolean player2Eating = false;
 
     private final int playerCount;
+    private final boolean networked;
+    private final boolean networkHost;
+    private final PacManServer networkServer;
+    private final PacManClient networkClient;
 
-    public PacMan(int players) {
+    public PacMan(int players) { this(players, false, true, null, null); }
 
+    public PacMan(int players, boolean networked, boolean networkHost, PacManServer server, PacManClient client) {
         playerCount = players;
+        this.networked = networked;
+        this.networkHost = networkHost;
+        this.networkServer = server;
+        this.networkClient = client;
 
         setPreferredSize(
                 new Dimension(boardWidth, boardHeight));
@@ -162,6 +172,14 @@ public class PacMan extends JPanel implements ActionListener, KeyListener {
         }
 
         gameLoop = new Timer(50, this);
+        if (networked && !networkHost && networkClient != null) {
+            networkClient.setMessageHandler(message -> {
+                if (message.startsWith("STATE|")) {
+                    final String state = message.substring(6);
+                    SwingUtilities.invokeLater(() -> applyNetworkState(state));
+                }
+            });
+        }
     }
 
     private void loadImages() {
@@ -202,7 +220,7 @@ public class PacMan extends JPanel implements ActionListener, KeyListener {
 
         walls = new HashSet<>();
         foods = new HashSet<>();
-        ghosts = new HashSet<>();
+        ghosts = new LinkedHashSet<>();
 
         player1 = null;
         player2 = null;
@@ -714,7 +732,10 @@ public class PacMan extends JPanel implements ActionListener, KeyListener {
             return;
         }
 
-        move();
+        if (!networked || networkHost) {
+            move();
+            if (networked && networkHost && networkServer != null) networkServer.broadcastState(createNetworkState());
+        }
         repaint();
     }
 
@@ -735,24 +756,23 @@ public class PacMan extends JPanel implements ActionListener, KeyListener {
 
         int key = e.getKeyCode();
 
-        if (key == KeyEvent.VK_UP) {
-
-            setDirection(player1, 'U');
-
-        } else if (key == KeyEvent.VK_DOWN) {
-
-            setDirection(player1, 'D');
-
-        } else if (key == KeyEvent.VK_LEFT) {
-
-            setDirection(player1, 'L');
-
-        } else if (key == KeyEvent.VK_RIGHT) {
-
-            setDirection(player1, 'R');
+        if (!networked || networkHost) {
+            if (key == KeyEvent.VK_UP) setDirection(player1, 'U');
+            else if (key == KeyEvent.VK_DOWN) setDirection(player1, 'D');
+            else if (key == KeyEvent.VK_LEFT) setDirection(player1, 'L');
+            else if (key == KeyEvent.VK_RIGHT) setDirection(player1, 'R');
         }
 
-        if (playerCount == 2 && player2 != null) {
+        if (networked && !networkHost) {
+            char direction = 0;
+            if (key == KeyEvent.VK_UP || key == KeyEvent.VK_W) direction = 'U';
+            else if (key == KeyEvent.VK_DOWN || key == KeyEvent.VK_S) direction = 'D';
+            else if (key == KeyEvent.VK_LEFT || key == KeyEvent.VK_A) direction = 'L';
+            else if (key == KeyEvent.VK_RIGHT || key == KeyEvent.VK_D) direction = 'R';
+            if (direction != 0 && networkClient != null) networkClient.send("INPUT|" + direction);
+        }
+
+        if (!networked && playerCount == 2 && player2 != null) {
 
             if (key == KeyEvent.VK_W) {
 
@@ -799,5 +819,66 @@ public class PacMan extends JPanel implements ActionListener, KeyListener {
 
             player.image = pacmanRightImage;
         }
+    }
+
+
+    public void acceptRemoteDirection(char direction) {
+        if (networked && networkHost) setDirection(player2, direction);
+    }
+
+    private String createNetworkState() {
+        StringBuilder b = new StringBuilder();
+        appendPlayer(b, player1); b.append('|'); appendPlayer(b, player2);
+        b.append('|').append(score1).append(',').append(score2).append(',').append(lives1).append(',').append(lives2);
+        b.append('|');
+        boolean first = true;
+        for (Block food : foods) { if (!first) b.append(';'); first = false; b.append(food.x).append(',').append(food.y); }
+        b.append('|'); first = true;
+        for (Block ghost : ghosts) { if (!first) b.append(';'); first = false; b.append(ghost.x).append(',').append(ghost.y).append(',').append(ghost.direction); }
+        return b.toString();
+    }
+
+    private void appendPlayer(StringBuilder b, Block p) {
+        if (p == null) { b.append("-1,-1,U"); return; }
+        b.append(p.x).append(',').append(p.y).append(',').append(p.direction);
+    }
+
+    private void applyNetworkState(String state) {
+        try {
+            String[] sections = state.split("\\|", -1);
+            applyPlayer(player1, sections[0]); applyPlayer(player2, sections[1]);
+            String[] stats = sections[2].split(",");
+            score1 = Integer.parseInt(stats[0]); score2 = Integer.parseInt(stats[1]);
+            lives1 = Integer.parseInt(stats[2]); lives2 = Integer.parseInt(stats[3]);
+            if (player1 != null && lives1 <= 0) player1 = null;
+            if (player2 != null && lives2 <= 0) player2 = null;
+            foods.clear();
+            if (!sections[3].isEmpty()) for (String item : sections[3].split(";")) {
+                String[] xy = item.split(",");
+                foods.add(new Block(powerFoodImage, Integer.parseInt(xy[0]), Integer.parseInt(xy[1]), 4, 4));
+            }
+            String[] ghostStates = sections[4].isEmpty() ? new String[0] : sections[4].split(";");
+            int i = 0;
+            for (Block ghost : ghosts) {
+                if (i >= ghostStates.length) break;
+                String[] values = ghostStates[i++].split(",");
+                ghost.x = Integer.parseInt(values[0]); ghost.y = Integer.parseInt(values[1]);
+                ghost.direction = values[2].charAt(0); ghost.updateVelocity();
+            }
+            repaint();
+        } catch (Exception ex) { System.out.println("Invalid multiplayer update: " + ex.getMessage()); }
+    }
+
+    private void applyPlayer(Block player, String data) {
+        if (player == null) return;
+        String[] values = data.split(",");
+        int x = Integer.parseInt(values[0]), y = Integer.parseInt(values[1]);
+        char d = values[2].charAt(0);
+        if (x >= 0 && y >= 0) { player.x = x; player.y = y; }
+        player.direction = d; player.updateVelocity();
+        if (d == 'U') player.image = pacmanUpImage;
+        else if (d == 'D') player.image = pacmanDownImage;
+        else if (d == 'L') player.image = pacmanLeftImage;
+        else if (d == 'R') player.image = pacmanRightImage;
     }
 }

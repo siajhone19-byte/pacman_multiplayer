@@ -193,13 +193,16 @@ public class PacManMenu extends JFrame {
                                                 Cursor.HAND_CURSOR));
         }
 
-        private void startGame(int players) {
+        private void startGame(int players) { startGame(players, false, true); }
+
+        private void startGame(int players, boolean networked, boolean isHost) {
 
                 dispose();
 
                 JFrame gameFrame = new JFrame();
 
-                PacMan pacman = new PacMan(players);
+                PacMan pacman = new PacMan(players, networked, isHost, server, client);
+                if (networked && isHost && server != null) server.attachGame(pacman);
 
                 if (players == 1) {
 
@@ -252,18 +255,11 @@ public class PacManMenu extends JFrame {
                                                         "The game will now start.");
 
                         server = new PacManServer();
-
-                        Thread serverThread = new Thread(() -> {
-
-                                server.startServer();
-
-                        });
-
+                        Thread serverThread = new Thread(() -> server.startServer(), "PacMan-server");
+                        serverThread.setDaemon(true);
                         serverThread.start();
-
                         Thread.sleep(300);
-
-                        startGame(2);
+                        startGame(2, true, true);
 
                 } catch (Exception e) {
 
@@ -301,7 +297,7 @@ public class PacManMenu extends JFrame {
                                                         "You are Player 2.\n\n" +
                                                         "Starting game...");
 
-                        startGame(2);
+                        startGame(2, true, false);
 
                 } else {
 
