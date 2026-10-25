@@ -940,7 +940,7 @@ public class PacMan extends JPanel implements ActionListener, KeyListener {
         if (d == 'U') {
             player.image = pacmanUpImage;
         } else if (d == 'D') {
-            player.gitimage = pacmanDownImage;
+            player.image = pacmanDownImage;
         } else if (d == 'L') {
             player.image = pacmanLeftImage;
         } else if (d == 'R') {
